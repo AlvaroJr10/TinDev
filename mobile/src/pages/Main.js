@@ -1,248 +1,276 @@
-import React, { useEffect, useState } from 'react'
-import io from 'socket.io-client'
-import { View, Text, SafeAreaView, Image, StyleSheet, TouchableOpacity } from 'react-native'
-import AsyncStorage from '@react-native-community/async-storage'
+import React, { useEffect, useState } from 'react';
+import io from 'socket.io-client';
+import AsyncStorage from '@react-native-community/async-storage';
+import {
+	SafeAreaView,
+	View,
+	Image,
+	StyleSheet,
+	Text,
+	TouchableOpacity
+} from 'react-native';
 
+import api from '../services/api';
 
-import api from '../services/api.js'
+import logo from '../assets/logo.png';
+import like from '../assets/like.png';
+import dislike from '../assets/dislike.png';
+import itsamatch from '../assets/itsamatch.png';
 
-import logo from '../assets/logo.png'
-import like from '../assets/like.png'
-import dislike from '../assets/dislike.png'
-import itsamatch from '../assets/itsamatch.png'
+const Main = ({ navigation }) => {
+	const [users, setUsers] = useState([]);
+	const [matchDev, setMatchDev] = useState(null);
+	const userID = navigation.getParam('user');
 
-export default function Main({ navigation }) {
+	// Chamada na API
+	useEffect(() => {
+		const loadUsers = async () => {
+			const response = await api.get('/devs', {
+				headers: { user: userID }
+			});
 
-    const id = navigation.getParam('user')
-    const [users, setUsers] = useState([])
-    const [matchDev, setMatchDev] = useState(false)
+			setUsers(response.data);
+		};
 
-    useEffect( () => {
-        async function loadUsers() {
-            const response = await api.get('/devs', {
-                headers: {
-                    user: id
-                }
-            })
+		loadUsers();
 
-            // NOT BEST SOLUTION
-            const shuffleArray = arr => arr.sort(() => Math.random() - 0.5)
+	}, [userID]);
 
-            //setUsers(shuffleArray(response.data))
-            setUsers(response.data)
-        }
+	// Conexão com o Socket
+	useEffect(() => {
+		const socket = io('http://localhost:3333', {
+			query: { user: userID }
+		});
 
-        loadUsers()
-    }, [id])
+		socket.on('match', dev => {
+			setMatchDev(dev);
+		});
+	}, [userID]);
 
-    useEffect(() => {
-        const socket = io('http://192.168.1.73:3333', { 
-            query: {
-                user: id
-            }
-        })
+	const handleLike = async () => {
+		const [user, ...rest] = users;
 
-        socket.on('match', dev => {
-            setMatchDev(dev)
-        })
-    }, [id])
+		await api.post(`/devs/${user._id}/likes`, null, {
+			headers: { user: userID }
+		});
 
-    async function handleLike() {
-        const [ user, ...rest] = users
+		setUsers(rest);
+	};
 
-        await api.post(`/devs/${user._id}/likes`, null, {
-            headers: {
-                user: id
-            }
-        })
+	const handleDislike = async () => {
+		const [user, ...rest] = users;
 
-        setUsers(rest)
-    }
+		await api.post(`/devs/${user._id}/dislikes`, null, {
+			headers: { user: userID }
+		});
 
-    async function handleDislike() {
-        const [ user, ...rest] = users
+		setUsers(rest);
+	};
 
-        await api.post(`/devs/${user._id}/dislikes`, null, {
-            headers: {
-                user: id
-            }
-        })
+	handleLogout = async () => {
+		await AsyncStorage.clear();
 
-        setUsers(rest)
-    }
+		navigation.navigate('Login');
+	};
 
-    async function handleLogout() {
-        await AsyncStorage.clear()
+	return (
+		<SafeAreaView style={styles.container}>
+			<TouchableOpacity onPress={handleLogout}>
+				<Image style={styles.logo} source={logo} />
+			</TouchableOpacity>
 
-        navigation.navigate('Login')
-    }
+			<View style={styles.cardsContainer}>
+				{users.length > 0
+				? (
+					users.map((user, index) => (
+						<View key={user._id} style={[styles.card, { zIndex: (users.length - index)}]}>
+							<Image style={styles.avatar} source={{ uri: user.avatar }} />
 
-    return (
-        <SafeAreaView style={styles.container}>
-            <TouchableOpacity onPress={handleLogout}>
-                <Image style={styles.logo} source={logo} />
-            </TouchableOpacity>
+							<View style={styles.footer}>
+								<Text style={styles.name}>{user.name}</Text>
+								<Text style={styles.bio} numberOfLines={3}>{user.bio}</Text>
+							</View>
 
-            <View style={styles.cardsContainer}>
-                { users.map((user, index )=> (
-                    <View key={user._id} style={[styles.card, { zIndex: users.length - index }]}>
-                        <Image style={styles.avatar} source={{ uri: user.avatar }} />
+							<Text style={styles.quantity}>{index + 1} / {users.length + 1}</Text>
+						</View>
+					))
+				)
+				: (
+					<Text style={styles.empty}>Acabou :(</Text>
+				)}
+			</View>
 
-                        <View style={styles.footer}>
-                            <Text style={styles.name}>{user.name}</Text>
-                            <Text numberOfLines={3} style={styles.bio}>{user.bio}</Text>
-                        </View>
-                    </View>
-                )) }
-            </View>
+			{users.length > 0 && (
+				<View style={styles.buttonsContainer}>
+					<TouchableOpacity style={styles.button} onPress={handleDislike}>
+						<Image style={styles.like} source={dislike} />
+					</TouchableOpacity>
 
-            <View style={styles.buttonsContainer}>
-            <TouchableOpacity style={styles.button} onPress={handleDislike}>
-                    <Image source={dislike} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.button} onPress={handleLike}>
-                    <Image source={like} />
-                </TouchableOpacity>
-            </View>
+					<TouchableOpacity style={styles.button} onPress={handleLike}>
+						<Image style={styles.dislike} source={like} />
+					</TouchableOpacity>
+				</View>
+			)}
 
-            { matchDev && (
-                <View style={styles.matchContainer}>
-                    <Image style={styles.matchImage} source={itsamatch} />
-                    <Image style={styles.matchAvatar} source={{ uri: matchDev.avatar}} />
+			{matchDev && (
+				<View style={match.container}>
+					<Image style={match.image} source={itsamatch} />
+					<Image style={match.avatar} source={{ uri: matchDev.avatar }} />
+					<Text style={match.name}>{matchDev.name}</Text>
+					<Text style={match.bio}>{matchDev.bio}</Text>
 
-                    <Text style={styles.matchName}>{matchDev.name}</Text>
-                    <Text style={styles.matchBio}>{matchDev.bio}</Text>
+					<TouchableOpacity onPress={() => setMatchDev(null)}>
+						<Text style={match.close}>Fechar</Text>
+					</TouchableOpacity>
+				</View>
+			)}
+		</SafeAreaView>
+	);
+};
 
-                    <TouchableOpacity onPress={() => setMatchDev(false)}>
-                        <Text style={styles.closeMatch}>Fechar</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-        </SafeAreaView>
-    )
+const styles = StyleSheet.create({
+	container: {
+		alignItems: 'center',
+		backgroundColor: '#f5f5f5',
+		flex: 1,
+		justifyContent: 'space-between',
+	},
 
-}
+	logo: {
+		marginTop: 30,
+	},
 
-const styles =  StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f5f5f5',
-        alignItems: 'center',
-        justifyContent: 'space-between'
-    },
+	empty: {
+		alignSelf: 'center',
+		color: '#999',
+		fontSize: 24,
+		fontWeight: 'bold',
+	},
 
-    logo: {
-        marginTop: 20
-    },
+	cardsContainer: {
+		alignSelf: 'stretch',
+		flex: 1,
+		justifyContent: 'center',
+		maxHeight: 500,
+	},
 
-    cardsContainer: {
-        flex: 1,
-        alignSelf: 'stretch',
-        justifyContent: 'center',
-        maxHeight: 500
-    },
+	card: {
+		borderColor: '#ddd',
+		borderRadius: 8,
+		borderWidth: 1,
+		bottom: 0,
+		left: 0,
+		margin: 30,
+		minHeight: 350,
+		overflow: 'hidden',
+		position: 'absolute',
+		right: 0,
+		top: 0,
+	},
 
-    card: {
-        borderWidth: 1,
-        borderColor: '#DDD',
-        borderRadius: 8,
-        margin: 30,
-        overflow: 'hidden',
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0
-    },
+	quantity: {
+		backgroundColor: '#fff',
+		borderRadius: 50,
+		margin: 5,
+		paddingHorizontal: 10,
+		position: 'absolute',
+		top: 0,
+		zIndex: 100,
+	},
 
-    avatar: {
-        flex: 1,
-        height: 300,
-        backgroundColor: '#DDD'
-    },
+	avatar: {
+		flex: 1,
+		height: 300,
+	},
 
-    footer: {
-        backgroundColor: '#fff',
-        paddingHorizontal: 20,
-        paddingVertical: 15
-    },
+	footer: {
+		backgroundColor: '#fff',
+		paddingHorizontal: 20,
+		paddingVertical: 15,
+	},
 
-    name: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#333'
-    },
+	name: {
+		color: '#333',
+		fontSize: 16,
+		fontWeight: 'bold',
+	},
 
-    bio: {
-        fontSize: 14,
-        color: '#999',
-        marginTop: 5,
-        lineHeight: 18
-    },
+	bio: {
+		color: '#999',
+		fontSize: 14,
+		lineHeight: 18,
+		marginTop: 5,
+	},
 
-    buttonsContainer: {
-        flexDirection: 'row',
-        marginBottom: 30
-    },
-    button: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#FFF',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginHorizontal: 20,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        }
-    },
+	buttonsContainer: {
+		flexDirection: 'row',
+		marginBottom: 30,
+	},
 
-    matchContainer: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.8)',
-        justifyContent: 'center',
-        alignItems: 'center'
-    },
+	button: {
+		alignItems: 'center',
+		backgroundColor: '#fff',
+		borderRadius: 25,
+		elevation: 2,
+		height: 50,
+		justifyContent: 'center',
+		marginHorizontal: 20,
+		shadowColor: '#000',
+		shadowOffset: {
+			height: 2,
+			width: 0,
+		},
+		shadowOpacity: .05,
+		shadowRadius: 2,
+		width: 50,
 
-    matchImage: {
-        height: 60,
-        resizeMode: 'contain'
-    },
+	}
+});
 
-    matchAvatar: {
-        width: 160,
-        height: 160,
-        borderRadius: 80,
-        borderWidth: 5,
-        borderColor: '#FFF',
-        marginVertical: 30
-    },
+const match = StyleSheet.create({
+	container: {
+		...StyleSheet.absoluteFillObject,
+		alignItems: 'center',
+		backgroundColor: 'rgba(0, 0, 0, .8)',
+		justifyContent: 'center',
+		paddingHorizontal: 30,
+		zIndex: 9999,
+	},
 
-    matchName: {
-        fontSize: 26,
-        fontWeight: 'bold',
-        color: '#FFF'
-    },
+	image: {
+		height: 60,
+		resizeMode: 'contain',
+	},
 
-    matchBio: {
-        marginTop: 10,
-        fontSize: 16,
-        color: 'rgba(255,255,255,0.8)',
-        lineHeight: 24,
-        textAlign: 'center',
-        paddingHorizontal: 30
-    },
+	avatar: {
+		borderColor: '#fff',
+		borderRadius: 80,
+		borderWidth: 5,
+		height: 160,
+		marginVertical: 30,
+		width: 160,
+	},
 
-    closeMatch: {
-        fontSize: 16,
-        color: 'rgba(255,255,255,0.8)',
-        textAlign: 'center',
-        marginTop: 30,
-        fontWeight: 'bold'
-    }
-})
+	name: {
+		color: '#fff',
+		fontSize: 26,
+		fontWeight: 'bold',
+	},
+
+	bio: {
+		color: 'rgba(255, 255, 255, .8)',
+		marginTop: 10,
+		fontSize: 14,
+		textAlign: 'center',
+		lineHeight: 22,
+	},
+
+	close: {
+		color: 'rgba(255, 255, 255, .8)',
+		marginTop: 30,
+		fontSize: 16,
+		fontWeight: 'bold',
+	},
+});
+
+export default Main;
